@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 
 from loguru import logger
+from matplotlib.pyplot import pause
 
 from global_id_tracker import GlobalIDTracker
 
@@ -101,8 +102,9 @@ def main():
                  'uav0000355_00001_v', 'uav0000370_00001_v']  # 17 sequences
 
     # For Train sequences
-    for seq in train_seqs:
+    for seq in train_seqs:  # test_seqs
         seq_path = train_dir_sequences + '/' + seq
+        # seq_path = test_dir_sequences + '/' + seq
 
         if path.isdir(seq_path):
             files = get_image_list(seq_path)
@@ -118,6 +120,7 @@ def main():
             img_orig = cv2.imread(img_path)
             img = copy.deepcopy(img_orig)
             annotations = np.loadtxt(train_dir_annotations + '/' + seq + '.txt', delimiter=',')
+            # annotations = np.loadtxt(test_dir_annotations + '/' + seq + '.txt', delimiter=',')
             annotations_frame = annotations[np.where(annotations[:, 0] == frame)]
             annotations_frame[:, 4:6] += annotations_frame[:, 2:4]  # convert [x1,y1,w,h] to [x1,y1,x2,y2]
 
@@ -138,7 +141,8 @@ def main():
 
                 ID_write = format(ID_COUNTER, '06d') + '_' + class_name
                 color = get_color(obj_id)
-                #id_text = '{}'.format(int(id)) + ', ' + class_name
+                # id_text = '{}'.format(int(obj_id)) + ', ' + class_name
+                # id_text = class_name
                 id_text = '{}'.format(int(obj_id))
                 cv2.rectangle(img, (x1, y1), (x2, y2), color=color, thickness=line_thickness)
                 cv2.putText(img, id_text, (x1, y1), cv2.FONT_HERSHEY_PLAIN, text_scale, (0, 0, 255),
@@ -155,6 +159,7 @@ def main():
 
             if frame % 20 == 0:
                 logger.info('Processing frame {}/{})'.format(frame, num_frames))
+
 
 
 # Execute from the interpreter
