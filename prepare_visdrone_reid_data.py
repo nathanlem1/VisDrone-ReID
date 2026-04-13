@@ -137,13 +137,13 @@ def main():
                 class_name = CATEGORIES[class_idx]
                 bbox = annotations_frame[i, 2:6]
                 x1, y1, x2, y2 = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
-                crop = img_orig[y1:y2, x1:x2, :]  # Not to include the plotted lines to the cropped images
+                crop = img_orig[y1:y2, x1:x2, :]  # Use img_orig to NOT include the plotted lines to the cropped images
 
                 ID_write = format(ID_COUNTER, '06d') + '_' + class_name
                 color = get_color(obj_id)
-                # id_text = '{}'.format(int(obj_id)) + ', ' + class_name
+                # id_text = str(obj_id) + ', ' + class_name
                 # id_text = class_name
-                id_text = '{}'.format(int(obj_id))
+                id_text = str(obj_id)
                 cv2.rectangle(img, (x1, y1), (x2, y2), color=color, thickness=line_thickness)
                 cv2.putText(img, id_text, (x1, y1), cv2.FONT_HERSHEY_PLAIN, text_scale, (0, 0, 255),
                             thickness=text_thickness)
