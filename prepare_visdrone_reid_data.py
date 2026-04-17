@@ -568,5 +568,6 @@ def main():
     logger.success("="*60)
 
 
+# Execute from the interpreter
 if __name__ == "__main__":
     main()
