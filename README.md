@@ -14,7 +14,7 @@ that serve as gallery. Look at the `prepare_visdrone_reid_dataset.py` for more d
 If you find this work useful in your research, please consider citing it using:
 
 ```
-@misc{VisDrone-ReID2026,
+@misc{VisDroneReID2026,
     title={{VisDrone-ReID}: Multi-class ReID dataset prepared from VisDrone-MOT dataset.},
     author={Nathanael L. Baisa},
     howpublished = {\url{https://github.com/nathanlem1/VisDrone-ReID}},
