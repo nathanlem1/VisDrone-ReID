@@ -1,4 +1,5 @@
 class GlobalIDTracker:
+    """ To get global identity (ID) from different annotated video sequences. """
     def __init__(self):
         self.global_id_counter = 0
         self.sequence_mapping = {}  # {(sequence_id, local_id): global_id}
