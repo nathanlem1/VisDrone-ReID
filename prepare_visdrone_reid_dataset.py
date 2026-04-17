@@ -439,7 +439,7 @@ def main():
 
     parser.add_argument(
         "--input_dir",
-        default="../datasets/VisDrone2019",  # ./dataset
+        default="../datasets/VisDrone2019",  # ./dataset # You need set to Path-To-Your-Dataset
         type=str,
         help="Root directory containing VisDrone2019-MOT-* folders"
     )
