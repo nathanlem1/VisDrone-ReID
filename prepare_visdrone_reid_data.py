@@ -27,7 +27,7 @@ CATEGORIES = dict(zip(class_indices, class_names))
 
 
 # ======================================================
-# Hardcoded Sequence Lists
+# Sequence Lists
 # ======================================================
 
 TRAIN_SEQS = ['uav0000013_01073_v', 'uav0000013_01392_v', 'uav0000020_00406_v', 
