@@ -62,28 +62,44 @@ TEST_SEQS = ['uav0000009_03358_v', 'uav0000073_00600_v', 'uav0000073_04464_v',
              'uav0000355_00001_v', 'uav0000370_00001_v']  # 17 sequences
 
 
-# ======================================================
+# =============================================================================
 # Dataset Statistics
-# ======================================================
+# =============================================================================
 
 class DatasetStatistics:
     def __init__(self):
         self.total_images = 0
         self.total_identities = 0
-        self.category_counts = defaultdict(int)
+        self.category_image_counts = defaultdict(int)    # images per category
+        self.category_identity_counts = defaultdict(int) # identities per category
         self.images_per_identity = []
         self.sequences_processed = []
         self.identities_removed = 0
-        
+
     def update(self, pid_images):
+        """
+        pid_images: dict {global_id: [(crop, class_name), ...]}
+
+        Each identity belongs to exactly one category (single-object
+        tracking source), so we take the category from the first image
+        of each identity to count identities per category.
+        """
         self.total_identities = len(pid_images)
+
         for pid, img_data in pid_images.items():
             num_images = len(img_data)
             self.images_per_identity.append(num_images)
             self.total_images += num_images
-            for _, class_name in img_data:  
-                self.category_counts[class_name] += 1
-    
+
+            # Determine the category for this identity (first image is sufficient
+            # since all images of one tracked object share the same category)
+            identity_category = img_data[0][1]
+            self.category_identity_counts[identity_category] += 1
+
+            # Count images per category
+            for _, class_name in img_data:
+                self.category_image_counts[class_name] += 1
+
     def get_summary(self):
         if not self.images_per_identity:
             return {
@@ -92,24 +108,26 @@ class DatasetStatistics:
                 'avg_images_per_id': 0,
                 'min_images_per_id': 0,
                 'max_images_per_id': 0,
-                'category_distribution': {},
+                'category_image_counts': {},
+                'category_identity_counts': {},
                 'identities_removed': self.identities_removed
             }
-        
+
         return {
             'total_images': self.total_images,
             'total_identities': self.total_identities,
             'avg_images_per_id': np.mean(self.images_per_identity),
             'min_images_per_id': np.min(self.images_per_identity),
             'max_images_per_id': np.max(self.images_per_identity),
-            'category_distribution': dict(self.category_counts),
+            'category_image_counts': dict(self.category_image_counts),
+            'category_identity_counts': dict(self.category_identity_counts),
             'identities_removed': self.identities_removed
         }
 
 
-# ======================================================
-# Utility Functions
-# ======================================================
+# =============================================================================
+# Helpers
+# =============================================================================
 
 def ensure_dir(path):
     os.makedirs(path, exist_ok=True)
@@ -119,9 +137,9 @@ def load_annotations(ann_path):
     return np.loadtxt(ann_path, delimiter=',', dtype=float)
 
 
-# ======================================================
-# Core Processing Function
-# ======================================================
+# =============================================================================
+# Processing
+# =============================================================================
 
 def process_split(
     split_name,
@@ -169,7 +187,6 @@ def process_split(
             if img is None:
                 continue
 
-            # Safe copy
             ann_frame = annotations[annotations[:, 0] == frame_id].copy()
 
             # Convert (x, y, w, h) → (x1, y1, x2, y2)
@@ -179,11 +196,10 @@ def process_split(
                 local_id = int(row[1])
                 x1, y1, x2, y2 = map(int, row[2:6])
                 class_idx = int(row[7])
-                
-                # Category filtering
+
                 if class_idx not in CATEGORIES.keys():
                     continue
-                
+
                 class_name = CATEGORIES[class_idx]
 
                 if x2 <= x1 or y2 <= y1:
@@ -203,67 +219,59 @@ def process_split(
                     continue
 
                 global_id = tracker.get_global_id(seq, local_id)
-                
                 pid_images[global_id].append((crop, class_name))
 
                 if display:
                     cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    cv2.putText(img, f"{local_id}: {class_name}", (x1, y1-5), 
-                               cv2.FONT_HERSHEY_PLAIN, 1.5, (0, 255, 0), 2)
+                    cv2.putText(img, f"{local_id}: {class_name}", (x1, y1 - 5),
+                                cv2.FONT_HERSHEY_PLAIN, 1.5, (0, 255, 0), 2)
                     cv2.imshow("VisDrone", img)
                     cv2.waitKey(1)
 
-    
-    # ======================================================
-    # Filter identities with too few images
-    # ======================================================
+    # ── Filter identities with too few images ─────────────────────────────
     logger.info(f"Filtering identities with < {min_images_per_identity_for_split} images...")
     original_count = len(pid_images)
 
-    # Collect statistics before filtering
     images_per_id_before = [len(img_data) for img_data in pid_images.values()]
     if images_per_id_before:
         logger.info(f"Before filtering: {original_count} identities")
         logger.info(f"  Images per ID - Min: {min(images_per_id_before)}, "
-                   f"Max: {max(images_per_id_before)}, "
-                   f"Avg: {np.mean(images_per_id_before):.2f}")
-    
-    filtered_pid_images = {}
-    for pid, img_data in pid_images.items():
-        if len(img_data) >= min_images_per_identity_for_split:
-            filtered_pid_images[pid] = img_data
-    
+                    f"Max: {max(images_per_id_before)}, "
+                    f"Avg: {np.mean(images_per_id_before):.2f}")
+
+    filtered_pid_images = {
+        pid: img_data
+        for pid, img_data in pid_images.items()
+        if len(img_data) >= min_images_per_identity_for_split
+    }
+
     filtered_count = len(filtered_pid_images)
     removed_count = original_count - filtered_count
-    
+
     logger.info(f"After filtering: {filtered_count} identities kept, {removed_count} removed")
-    
+
     if filtered_count > 0:
         images_per_id_after = [len(img_data) for img_data in filtered_pid_images.values()]
         logger.info(f"  Images per ID - Min: {min(images_per_id_after)}, "
-                   f"Max: {max(images_per_id_after)}, "
-                   f"Avg: {np.mean(images_per_id_after):.2f}")
-    
+                    f"Max: {max(images_per_id_after)}, "
+                    f"Avg: {np.mean(images_per_id_after):.2f}")
+
     pid_images = filtered_pid_images
     stats.identities_removed = removed_count
 
-    # Update statistics
+    # Update statistics — now includes per-category identity counts
     stats.update(pid_images)
 
-    # ======================================================
-    # Save images with class name in filenames
-    # ======================================================
+    # ── Save crops ────────────────────────────────────────────────────────
     save_root = os.path.join(output_dir, split_name)
     ensure_dir(save_root)
 
     total_images = 0
-
     for pid, img_data in pid_images.items():
         pid_dir = os.path.join(save_root, f"{pid:06d}")
         ensure_dir(pid_dir)
 
         for idx, (crop, class_name) in enumerate(img_data):
-            
             img_name = f"{pid:06d}_{class_name}_{idx:04d}.jpg"
             cv2.imwrite(os.path.join(pid_dir, img_name), crop)
             total_images += 1
@@ -274,68 +282,83 @@ def process_split(
 
     if display:
         cv2.destroyAllWindows()
-    
+
     return stats
 
 
-# ======================================================
+# =============================================================================
 # README Generator
-# ======================================================
+# =============================================================================
 
 def generate_readme(output_dir, train_stats, test_stats, args):
-    """Generate comprehensive README file for the dataset"""
-    
+    """Generate comprehensive README file for the dataset."""
+
     readme_path = os.path.join(output_dir, "README.md")
-    
+
     train_summary = train_stats.get_summary()
-    test_summary = test_stats.get_summary()
-    
+    test_summary  = test_stats.get_summary()
+
     with open(readme_path, 'w', encoding='utf-8') as f:
         f.write("# VisDrone ReID Dataset (Unified ID Space)\n\n")
 
         # Overview
         f.write("## Overview\n\n")
-        f.write("This dataset is derived from the VisDrone2019-MOT benchmark for object re-identification (ReID) tasks.\n")
-        f.write("It contains crops of tracked objects from drone surveillance videos, organized by identity.\n\n")
-        f.write("**Key Feature:** This dataset uses a **unified global ID space** across both training and test sets. ")
-        f.write("Identities are tracked consistently across all sequences using a global ID mapping system.\n\n")
-        
+        f.write("This dataset is derived from the VisDrone2019-MOT benchmark for "
+                "object re-identification (ReID) tasks.\n")
+        f.write("It contains crops of tracked objects from drone surveillance videos, "
+                "organized by identity.\n\n")
+        f.write("**Key Feature:** This dataset uses a **unified global ID space** across "
+                "both training and test sets. ")
+        f.write("Identities are tracked consistently across all sequences using a global "
+                "ID mapping system.\n\n")
+
         # Dataset Statistics
         f.write("## Dataset Statistics\n\n")
+
         f.write("### Training Set\n")
         f.write(f"- **Total Identities:** {train_summary['total_identities']}\n")
         f.write(f"- **Total Images:** {train_summary['total_images']}\n")
         f.write(f"- **Images per Identity:** {train_summary['avg_images_per_id']:.2f} (avg), "
-                f"{train_summary['min_images_per_id']} (min), {train_summary['max_images_per_id']} (max)\n")
-        f.write(f"- **Source Sequences:** {len(TRAIN_SEQS)} (train) + {len(VAL_SEQS)} (val) = {len(TRAIN_SEQS) + len(VAL_SEQS)} total\n")
-        f.write(f"- **Identities Removed (< {args.min_images_per_train_id} images):** {train_summary['identities_removed']}\n\n")
-        
+                f"{train_summary['min_images_per_id']} (min), "
+                f"{train_summary['max_images_per_id']} (max)\n")
+        f.write(f"- **Source Sequences:** {len(TRAIN_SEQS)} (train) + "
+                f"{len(VAL_SEQS)} (val) = {len(TRAIN_SEQS) + len(VAL_SEQS)} total\n")
+        f.write(f"- **Identities Removed (< {args.min_images_per_train_id} images):** "
+                f"{train_summary['identities_removed']}\n\n")
+
         f.write("### Test Set\n")
         f.write(f"- **Total Identities:** {test_summary['total_identities']}\n")
         f.write(f"- **Total Images:** {test_summary['total_images']}\n")
         f.write(f"- **Images per Identity:** {test_summary['avg_images_per_id']:.2f} (avg), "
-                f"{test_summary['min_images_per_id']} (min), {test_summary['max_images_per_id']} (max)\n")
+                f"{test_summary['min_images_per_id']} (min), "
+                f"{test_summary['max_images_per_id']} (max)\n")
         f.write(f"- **Source Sequences:** {len(TEST_SEQS)}\n")
-        f.write(f"- **Identities Removed (< {args.min_images_per_test_id} images):** {test_summary['identities_removed']}\n\n")
+        f.write(f"- **Identities Removed (< {args.min_images_per_test_id} images):** "
+                f"{test_summary['identities_removed']}\n\n")
 
-        # Category Distribution
+        # Category Distribution — now includes identities per category
         f.write("## Category Distribution\n\n")
+
         f.write("### Training Set\n")
-        f.write("| Category | Count | Percentage |\n")
-        f.write("|----------|-------|------------|\n")
-        for cat in sorted(train_summary['category_distribution'].keys()):
-            count = train_summary['category_distribution'][cat]
-            pct = (count / train_summary['total_images']) * 100
-            f.write(f"| {cat} | {count} | {pct:.2f}% |\n")
-        
+        f.write("| Category | Identities | Images | % Identities | % Images |\n")
+        f.write("|----------|-----------|--------|--------------|----------|\n")
+        for cat in sorted(train_summary['category_identity_counts'].keys()):
+            n_ids  = train_summary['category_identity_counts'].get(cat, 0)
+            n_imgs = train_summary['category_image_counts'].get(cat, 0)
+            pct_ids  = (n_ids  / train_summary['total_identities']) * 100
+            pct_imgs = (n_imgs / train_summary['total_images'])     * 100
+            f.write(f"| {cat} | {n_ids} | {n_imgs} | {pct_ids:.2f}% | {pct_imgs:.2f}% |\n")
+
         f.write("\n### Test Set\n")
-        f.write("| Category | Count | Percentage |\n")
-        f.write("|----------|-------|------------|\n")
-        for cat in sorted(test_summary['category_distribution'].keys()):
-            count = test_summary['category_distribution'][cat]
-            pct = (count / test_summary['total_images']) * 100
-            f.write(f"| {cat} | {count} | {pct:.2f}% |\n")
-        
+        f.write("| Category | Identities | Images | % Identities | % Images |\n")
+        f.write("|----------|-----------|--------|--------------|----------|\n")
+        for cat in sorted(test_summary['category_identity_counts'].keys()):
+            n_ids  = test_summary['category_identity_counts'].get(cat, 0)
+            n_imgs = test_summary['category_image_counts'].get(cat, 0)
+            pct_ids  = (n_ids  / test_summary['total_identities']) * 100
+            pct_imgs = (n_imgs / test_summary['total_images'])     * 100
+            f.write(f"| {cat} | {n_ids} | {n_imgs} | {pct_ids:.2f}% | {pct_imgs:.2f}% |\n")
+
         # Processing Parameters
         f.write("\n## Processing Parameters\n\n")
         f.write(f"- **Sample Rate:** Every {args.sample_rate} frames\n")
@@ -344,7 +367,7 @@ def generate_readme(output_dir, train_stats, test_stats, args):
         f.write(f"- **Minimum Images per Test Identity:** {args.min_images_per_test_id}\n")
         f.write(f"- **Valid Categories:** {', '.join(class_names)}\n")
         f.write(f"- **ID Space:** Unified (single global ID tracker across all sequences)\n\n")
-        
+
         # Directory Structure
         f.write("## Directory Structure\n\n")
         f.write("```\n")
@@ -382,29 +405,6 @@ def generate_readme(output_dir, train_stats, test_stats, args):
         f.write("- `000042_car_0123.jpg` - Identity 42, car, 124th image\n")
         f.write("- `001844_bus_0005.jpg` - Identity 1844, bus, 6th image\n\n")
 
-        # Quality Filtering
-        f.write("## Quality Filtering\n\n")
-        f.write("Identities are filtered based on the number of available images:\n")
-        f.write(f"- **Training:** Minimum {args.min_images_per_train_id} images per identity\n")
-        f.write(f"- **Testing:** Minimum {args.min_images_per_test_id} images per identity\n\n")
-        f.write("**Rationale:**\n")
-        f.write("- Ensures sufficient samples for robust model training\n")
-        f.write("- Enables reliable evaluation with multiple gallery matches per query\n")
-        f.write("- Filters out short, potentially noisy tracks\n")
-        f.write("- Improves dataset quality and evaluation reliability\n\n")
-
-        # Evaluation Protocol
-        f.write("## Evaluation Protocol\n\n")
-        f.write("This dataset follows standard ReID evaluation for within-sequence matching:\n\n")
-        f.write("1. **Query:** One random image per identity\n")
-        f.write("2. **Gallery:** All remaining images for each identity\n")
-        f.write("3. **Matching:** For each query, rank all gallery images by similarity\n")
-        f.write("4. **Metrics:**\n")
-        f.write("   - **CMC (Cumulative Matching Characteristics):** Rank-1, Rank-5, Rank-10 accuracy\n")
-        f.write("   - **mAP (mean Average Precision):** Overall retrieval quality\n\n")
-        f.write("since each identity appears in only one sequence.\n\n")
-        f.write("Query and gallery can be generated on the fly from the test set during evaluation.\n\n")
-
         # Source Sequences
         f.write("## Source Sequences\n\n")
         f.write("### Training Sequences\n")
@@ -413,82 +413,72 @@ def generate_readme(output_dir, train_stats, test_stats, args):
         for i in range(0, len(TRAIN_SEQS), 5):
             f.write(", ".join(TRAIN_SEQS[i:i+5]) + "\n")
         f.write("```\n\n")
-        
+
         f.write("### Validation Sequences (included in training set)\n")
         f.write(f"Total: {len(VAL_SEQS)} sequences\n\n")
         f.write("```\n")
         f.write(", ".join(VAL_SEQS) + "\n")
         f.write("```\n\n")
-        
+
         f.write("### Test Sequences\n")
         f.write(f"Total: {len(TEST_SEQS)} sequences\n\n")
         f.write("```\n")
         for i in range(0, len(TEST_SEQS), 5):
             f.write(", ".join(TEST_SEQS[i:i+5]) + "\n")
         f.write("```\n\n")
-    
+
     logger.success(f"README generated at: {readme_path}")
 
 
+# =============================================================================
 # Main
+# =============================================================================
 
 def main():
     parser = argparse.ArgumentParser(
         description="Prepare VisDrone ReID dataset with unified global ID space"
     )
-
-    parser.add_argument(
-        "--input_dir",
-        default="../datasets/VisDrone2019",  # ./dataset # You need to set to Path-To-Your-Dataset
-        type=str,
-        help="Root directory containing VisDrone2019-MOT-* folders"
-    )
-
-    parser.add_argument(
-        "--output_dir",
-        default="./VisDroneReID_data",
-        type=str,
-        help="Output ReID dataset directory"
-    )
-
+    parser.add_argument("--input_dir",
+                        default="../datasets/VisDrone2019",  # ./dataset # You need to set to Path-To-Your-Dataset
+                        type=str,
+                        help="Root directory containing VisDrone2019-MOT-* folders")
+    parser.add_argument("--output_dir",
+                        default="./VisDroneReID_data2",
+                        type=str,
+                        help="Output ReID dataset directory")
     parser.add_argument("--sample_rate", type=int, default=10,
-                       help="Sample every Nth frame (default: 10)")
-    
+                        help="Sample every Nth frame (default: 10)")
     parser.add_argument("--min_box_area", type=int, default=500,
-                       help="Minimum bounding box area in pixels (default: 500)")
-    
+                        help="Minimum bounding box area in pixels (default: 500)")
     parser.add_argument("--min_images_per_train_id", type=int, default=4,
-                       help="Minimum images per identity in training set (default: 4)")
-    
+                        help="Minimum images per identity in training set (default: 4)")
     parser.add_argument("--min_images_per_test_id", type=int, default=2,
-                       help="Minimum images per identity in test set (default: 2)")
-    
+                        help="Minimum images per identity in test set (default: 2)")
     parser.add_argument("--display", action="store_true",
-                       help="Display images during processing")
-
+                        help="Display images during processing")
     args = parser.parse_args()
 
-    # UNIFIED ID SPACE: Single tracker for both train and test
     unified_tracker = GlobalIDTracker()
 
-    # Directories
     train_root = os.path.join(args.input_dir, "VisDrone2019-MOT-train")
-    val_root = os.path.join(args.input_dir, "VisDrone2019-MOT-val")
-    test_root = os.path.join(args.input_dir, "VisDrone2019-MOT-test-dev")
+    val_root   = os.path.join(args.input_dir, "VisDrone2019-MOT-val")
+    test_root  = os.path.join(args.input_dir, "VisDrone2019-MOT-test-dev")
 
     ensure_dir(args.output_dir)
 
-    logger.info("="*60)
+    logger.info("=" * 60)
     logger.info("VisDrone ReID Dataset Preparation")
     logger.info("(Unified Global ID Space)")
-    logger.info("="*60)
+    logger.info("=" * 60)
     logger.info(f"Valid categories: {list(CATEGORIES.values())}")
     logger.info(f"Sample rate: every {args.sample_rate} frames")
     logger.info(f"Minimum box area: {args.min_box_area} pixels")
     logger.info(f"Minimum images per train identity: {args.min_images_per_train_id}")
     logger.info(f"Minimum images per test identity: {args.min_images_per_test_id}")
-    logger.info(f"Train sequences: {len(TRAIN_SEQS)}, Val sequences: {len(VAL_SEQS)}, Test sequences: {len(TEST_SEQS)}")
-    logger.info("="*60)
+    logger.info(f"Train sequences: {len(TRAIN_SEQS)}, "
+                f"Val sequences: {len(VAL_SEQS)}, "
+                f"Test sequences: {len(TEST_SEQS)}")
+    logger.info("=" * 60)
 
     # Train sequences → ReID train
     logger.info("\n[1/4] Processing training sequences...")
@@ -505,7 +495,7 @@ def main():
         display=args.display
     )
 
-    # Val sequences → ReID train (same tracker)
+    # Val sequences → ReID train
     logger.info("\n[2/4] Processing validation sequences...")
     train_stats_2 = process_split(
         split_name="train",
@@ -522,16 +512,22 @@ def main():
 
     # Merge train statistics
     train_stats = DatasetStatistics()
-    train_stats.total_images = train_stats_1.total_images + train_stats_2.total_images
+    train_stats.total_images     = train_stats_1.total_images     + train_stats_2.total_images
     train_stats.total_identities = train_stats_1.total_identities + train_stats_2.total_identities
-    train_stats.images_per_identity = train_stats_1.images_per_identity + train_stats_2.images_per_identity
-    train_stats.identities_removed = train_stats_1.identities_removed + train_stats_2.identities_removed
-    for cat, count in train_stats_1.category_counts.items():
-        train_stats.category_counts[cat] += count
-    for cat, count in train_stats_2.category_counts.items():
-        train_stats.category_counts[cat] += count
+    train_stats.images_per_identity = (train_stats_1.images_per_identity +
+                                       train_stats_2.images_per_identity)
+    train_stats.identities_removed  = (train_stats_1.identities_removed +
+                                       train_stats_2.identities_removed)
+    for cat, count in train_stats_1.category_image_counts.items():
+        train_stats.category_image_counts[cat] += count
+    for cat, count in train_stats_2.category_image_counts.items():
+        train_stats.category_image_counts[cat] += count
+    for cat, count in train_stats_1.category_identity_counts.items():
+        train_stats.category_identity_counts[cat] += count
+    for cat, count in train_stats_2.category_identity_counts.items():
+        train_stats.category_identity_counts[cat] += count
 
-    # Test sequences → ReID test (SAME unified tracker)
+    # Test sequences → ReID test
     logger.info("\n[3/4] Processing test sequences...")
     test_stats = process_split(
         split_name="test",
@@ -547,27 +543,32 @@ def main():
     )
 
     # Generate README
-    logger.info("\nGenerating README...")
+    logger.info("\n[4/4] Generating README...")
     generate_readme(args.output_dir, train_stats, test_stats, args)
 
     # Final summary
-    logger.success("\n" + "="*60)
+    logger.success("\n" + "=" * 60)
     logger.success("VisDrone ReID Dataset Preparation COMPLETE!")
-    logger.success("="*60)
+    logger.success("=" * 60)
     logger.info(f"Output directory: {args.output_dir}")
     logger.info(f"\nGlobal ID Tracker:")
-    logger.info(f"   - Total global IDs created: {unified_tracker.global_id_counter}")
+    logger.info(f"  Total global IDs created: {unified_tracker.global_id_counter}")
     logger.info(f"\nTraining Set:")
-    logger.info(f"   - Identities: {train_stats.total_identities}")
-    logger.info(f"   - Images: {train_stats.total_images}")
-    logger.info(f"   - Removed: {train_stats.identities_removed} identities")
+    logger.info(f"  Identities : {train_stats.total_identities}")
+    logger.info(f"  Images     : {train_stats.total_images}")
+    logger.info(f"  Removed    : {train_stats.identities_removed} identities")
+    logger.info(f"\n  Identities per category:")
+    for cat in sorted(train_stats.category_identity_counts.keys()):
+        logger.info(f"    {cat:<22}: {train_stats.category_identity_counts[cat]}")
     logger.info(f"\nTest Set:")
-    logger.info(f"   - Identities: {test_stats.total_identities}")
-    logger.info(f"   - Images: {test_stats.total_images}")
-    logger.info(f"   - Removed: {test_stats.identities_removed} identities")
-    logger.success("="*60)
+    logger.info(f"  Identities : {test_stats.total_identities}")
+    logger.info(f"  Images     : {test_stats.total_images}")
+    logger.info(f"  Removed    : {test_stats.identities_removed} identities")
+    logger.info(f"\n  Identities per category:")
+    for cat in sorted(test_stats.category_identity_counts.keys()):
+        logger.info(f"    {cat:<22}: {test_stats.category_identity_counts[cat]}")
+    logger.success("=" * 60)
 
 
-# Execute from the interpreter
 if __name__ == "__main__":
     main()
