@@ -126,7 +126,7 @@ class DatasetStatistics:
 
 
 # =============================================================================
-# Helpers
+# Utility Functions
 # =============================================================================
 
 def ensure_dir(path):
@@ -138,7 +138,7 @@ def load_annotations(ann_path):
 
 
 # =============================================================================
-# Processing
+# Core Processing Function
 # =============================================================================
 
 def process_split(
@@ -187,6 +187,7 @@ def process_split(
             if img is None:
                 continue
 
+            # Safe copy
             ann_frame = annotations[annotations[:, 0] == frame_id].copy()
 
             # Convert (x, y, w, h) → (x1, y1, x2, y2)
@@ -197,6 +198,7 @@ def process_split(
                 x1, y1, x2, y2 = map(int, row[2:6])
                 class_idx = int(row[7])
 
+                # Category filtering
                 if class_idx not in CATEGORIES.keys():
                     continue
 
@@ -228,7 +230,10 @@ def process_split(
                     cv2.imshow("VisDrone", img)
                     cv2.waitKey(1)
 
-    # ── Filter identities with too few images ─────────────────────────────
+
+    # ======================================================
+    # Filter identities with too few images
+    # ======================================================
     logger.info(f"Filtering identities with < {min_images_per_identity_for_split} images...")
     original_count = len(pid_images)
 
@@ -259,10 +264,12 @@ def process_split(
     pid_images = filtered_pid_images
     stats.identities_removed = removed_count
 
-    # Update statistics — now includes per-category identity counts
+    # Update statistics — includes per-category identity counts
     stats.update(pid_images)
 
-    # ── Save crops ────────────────────────────────────────────────────────
+    # ======================================================
+    # Save images with class name in filenames
+    # ======================================================
     save_root = os.path.join(output_dir, split_name)
     ensure_dir(save_root)
 
@@ -336,7 +343,7 @@ def generate_readme(output_dir, train_stats, test_stats, args):
         f.write(f"- **Identities Removed (< {args.min_images_per_test_id} images):** "
                 f"{test_summary['identities_removed']}\n\n")
 
-        # Category Distribution — now includes identities per category
+        # Category Distribution — includes identities per category
         f.write("## Category Distribution\n\n")
 
         f.write("### Training Set\n")
@@ -405,6 +412,29 @@ def generate_readme(output_dir, train_stats, test_stats, args):
         f.write("- `000042_car_0123.jpg` - Identity 42, car, 124th image\n")
         f.write("- `001844_bus_0005.jpg` - Identity 1844, bus, 6th image\n\n")
 
+        # Quality Filtering
+        f.write("## Quality Filtering\n\n")
+        f.write("Identities are filtered based on the number of available images:\n")
+        f.write(f"- **Training:** Minimum {args.min_images_per_train_id} images per identity\n")
+        f.write(f"- **Testing:** Minimum {args.min_images_per_test_id} images per identity\n\n")
+        f.write("**Rationale:**\n")
+        f.write("- Ensures sufficient samples for robust model training\n")
+        f.write("- Enables reliable evaluation with multiple gallery matches per query\n")
+        f.write("- Filters out short, potentially noisy tracks\n")
+        f.write("- Improves dataset quality and evaluation reliability\n\n")
+
+        # Evaluation Protocol
+        f.write("## Evaluation Protocol\n\n")
+        f.write("This dataset follows standard ReID evaluation for within-sequence matching:\n\n")
+        f.write("1. **Query:** One random image per identity\n")
+        f.write("2. **Gallery:** All remaining images for each identity\n")
+        f.write("3. **Matching:** For each query, rank all gallery images by similarity\n")
+        f.write("4. **Metrics:**\n")
+        f.write("   - **CMC (Cumulative Matching Characteristics):** Rank-1, Rank-5, Rank-10 accuracy\n")
+        f.write("   - **mAP (mean Average Precision):** Overall retrieval quality\n\n")
+        f.write("since each identity appears in only one sequence.\n\n")
+        f.write("Query and gallery can be generated on the fly from the test set during evaluation.\n\n")
+
         # Source Sequences
         f.write("## Source Sequences\n\n")
         f.write("### Training Sequences\n")
@@ -456,10 +486,13 @@ def main():
                         help="Minimum images per identity in test set (default: 2)")
     parser.add_argument("--display", action="store_true",
                         help="Display images during processing")
+
     args = parser.parse_args()
 
+    # UNIFIED ID SPACE: Single tracker for both train and test
     unified_tracker = GlobalIDTracker()
 
+    # Directories
     train_root = os.path.join(args.input_dir, "VisDrone2019-MOT-train")
     val_root   = os.path.join(args.input_dir, "VisDrone2019-MOT-val")
     test_root  = os.path.join(args.input_dir, "VisDrone2019-MOT-test-dev")
@@ -570,5 +603,6 @@ def main():
     logger.success("=" * 60)
 
 
+# Execute from the interpreter
 if __name__ == "__main__":
     main()
