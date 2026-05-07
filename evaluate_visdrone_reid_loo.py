@@ -156,13 +156,13 @@ def load_osnet_ibn(weights_path: str, device: torch.device) -> nn.Module:
     print(f"[Model] Loading: {weights_path}")
     ckpt = torch.load(weights_path, map_location="cpu", weights_only=False)
 
-    # Detect checkpoint format
-    if isinstance(ckpt, dict) and "state_dict" in ckpt:
+    # Detect checkpoint (ckpt) format
+    if isinstance(ckpt, dict) and "state_dict" in ckpt:  # for .pth.tar ckpt
         state_dict = ckpt["state_dict"]
         epoch      = ckpt.get("epoch", "?")
     else:
         # Raw state dict — no wrapper dict
-        state_dict = ckpt
+        state_dict = ckpt   # for .pth ckpt
         epoch      = "pretrained"
 
     # Strip 'module.' prefix from DataParallel checkpoints
