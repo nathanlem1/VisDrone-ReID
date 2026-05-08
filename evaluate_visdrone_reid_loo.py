@@ -16,7 +16,7 @@ contributes N queries. mAP and CMC are averaged across all queries.
 
 Metrics reported
 ----------------
-  Accuracy  : Rank-1, Rank-5, Rank-10, mAP
+  Accuracy  : Rank-1, Rank-5, Rank-10, mAP (both overall and per category)
   Efficiency: feature extraction time, per-image latency,
               query time, gallery memory, model params, FLOPs
 
@@ -26,6 +26,8 @@ Usage
         --dataset_root C:\path\to\VisDroneReID `
         --weights      C:\path\to\model.pth `
         --output_dir   C:\path\to\output
+
+Note that we use OSNet model from torchreid libray as a ReID model as an example of ReID evaluation in this code.
 """
 
 import os
@@ -47,14 +49,15 @@ from PIL import Image
 try:
     import torchreid
 except ImportError:
-    sys.exit("torchreid not found. Activate your torchreid conda environment.")
+    sys.exit("torchreid not found. Install with: pip install torchreid.")
 
 try:
     from thop import profile as thop_profile
     THOP_AVAILABLE = True
 except ImportError:
     THOP_AVAILABLE = False
-    print("[Warning] thop not installed - FLOPs will not be reported.")
+    print("[Warning] thop not installed - FLOPs will not be reported."
+          "Install with: pip install thop")
 
 
 # =============================================================================
@@ -154,7 +157,7 @@ def load_osnet_ibn(weights_path: str, device: torch.device):
       Format 2 — raw state dict (pretrained weights):
                  {"layer.weight": tensor, ...}
 
-    Reads num_classes from classifier.weight shape to avoid size mismatch.
+    Read num_classes from classifier.weight shape to avoid size mismatch.
     Strips the 'module.' prefix added by DataParallel if present.
     """
     print(f"[Model] Loading: {weights_path}")
@@ -254,7 +257,7 @@ def compute_AP(match_vector: np.ndarray) -> float:
     return float((prec_at * match_vector).sum() / num_rel)
 
 
-def evaluate_loo_per_category(features, pids, categories, max_rank=10):
+def evaluate_loo(features, pids, categories, max_rank=10):
     """
     Leave-one-out (LOO) evaluation with explicit gallery rebuild.
 
@@ -297,14 +300,15 @@ def evaluate_loo_per_category(features, pids, categories, max_rank=10):
         if not np.any(matches):
             continue
 
-        # CMC
+        # CMC - for overall
         cmc = matches.cumsum()
         cmc[cmc > 1] = 1
         all_cmc.append(cmc[:max_rank])
 
-        # AP
+        # AP - for overall
         all_AP.append(compute_AP(matches))
 
+        # CMC and AP - for per category
         cat_cmc[q_cat].append(cmc[:max_rank])
         cat_AP[q_cat].append(compute_AP(matches))
 
@@ -446,7 +450,7 @@ def main():
     # ── Step 4: evaluate ─────────────────────────────────────────────────
     print(f"\n[4/4] LOO evaluation ({n_images} queries)...")
     overall_cmc, overall_mAP, per_cat, eval_time = \
-        evaluate_loo_per_category(features, pids, cats, max_rank=10)
+        evaluate_loo(features, pids, cats, max_rank=10)
     print(f"  Done in {eval_time:.2f} s")
 
     # ── Report ────────────────────────────────────────────────────────────
