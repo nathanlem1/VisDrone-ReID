@@ -149,8 +149,8 @@ def process_split(
     tracker,
     sequence_list,
     sample_rate=10,
-    min_box_area=500,
-    min_images_per_identity_for_split=4,
+    min_box_area=50,
+    min_images_per_identity_for_split=2,
     display=False
 ):
     logger.info(f"Processing {split_name} split with {len(sequence_list)} sequences")
@@ -159,6 +159,8 @@ def process_split(
     pid_images = defaultdict(list)
     stats = DatasetStatistics()
     stats.sequences_processed = sequence_list.copy()
+
+    actual_min_box_area = 1e6
 
     for seq in tqdm(sequence_list, desc=f"{split_name} sequences"):
         seq_img_dir = os.path.join(sequences_dir, seq)
@@ -208,6 +210,8 @@ def process_split(
                     continue
 
                 box_area = (x2 - x1) * (y2 - y1)
+                if box_area < actual_min_box_area:
+                    actual_min_box_area = box_area
                 if box_area < min_box_area:
                     continue
 
@@ -260,6 +264,7 @@ def process_split(
         logger.info(f"  Images per ID - Min: {min(images_per_id_after)}, "
                     f"Max: {max(images_per_id_after)}, "
                     f"Avg: {np.mean(images_per_id_after):.2f}")
+    logger.info(f"Actual Minimum Bounding Box Area: {actual_min_box_area} pixels")
 
     pid_images = filtered_pid_images
     stats.identities_removed = removed_count
@@ -290,14 +295,14 @@ def process_split(
     if display:
         cv2.destroyAllWindows()
 
-    return stats
+    return stats, actual_min_box_area
 
 
 # =============================================================================
 # README Generator
 # =============================================================================
 
-def generate_readme(output_dir, train_stats, test_stats, args):
+def generate_readme(output_dir, train_stats, test_stats, args, actual_box_min_area_train, actual_box_min_area_test):
     """Generate comprehensive README file for the dataset."""
 
     readme_path = os.path.join(output_dir, "README.md")
@@ -355,6 +360,7 @@ def generate_readme(output_dir, train_stats, test_stats, args):
             pct_ids  = (n_ids  / train_summary['total_identities']) * 100
             pct_imgs = (n_imgs / train_summary['total_images'])     * 100
             f.write(f"| {cat} | {n_ids} | {n_imgs} | {pct_ids:.2f}% | {pct_imgs:.2f}% |\n")
+        f.write(f"- **Actual Minimum Bounding Box Area:** {actual_box_min_area_train}")
 
         f.write("\n### Test Set\n")
         f.write("| Category | Identities | Images | % Identities | % Images |\n")
@@ -365,6 +371,7 @@ def generate_readme(output_dir, train_stats, test_stats, args):
             pct_ids  = (n_ids  / test_summary['total_identities']) * 100
             pct_imgs = (n_imgs / test_summary['total_images'])     * 100
             f.write(f"| {cat} | {n_ids} | {n_imgs} | {pct_ids:.2f}% | {pct_imgs:.2f}% |\n")
+        f.write(f"- **Actual Minimum Bounding Box Area:** {actual_box_min_area_test}")
 
         # Processing Parameters
         f.write("\n## Processing Parameters\n\n")
@@ -473,14 +480,14 @@ def main():
                         type=str,
                         help="Root directory containing VisDrone2019-MOT-* folders")
     parser.add_argument("--output_dir",
-                        default="./VisDroneReID_data2",
+                        default="./VisDroneReID_data3",
                         type=str,
                         help="Output ReID dataset directory")
     parser.add_argument("--sample_rate", type=int, default=10,
                         help="Sample every Nth frame (default: 10)")
-    parser.add_argument("--min_box_area", type=int, default=500,
+    parser.add_argument("--min_box_area", type=int, default=50,  # 500
                         help="Minimum bounding box area in pixels (default: 500)")
-    parser.add_argument("--min_images_per_train_id", type=int, default=4,
+    parser.add_argument("--min_images_per_train_id", type=int, default=2, # 4
                         help="Minimum images per identity in training set (default: 4)")
     parser.add_argument("--min_images_per_test_id", type=int, default=2,
                         help="Minimum images per identity in test set (default: 2)")
@@ -505,7 +512,7 @@ def main():
     logger.info("=" * 60)
     logger.info(f"Valid categories: {list(CATEGORIES.values())}")
     logger.info(f"Sample rate: every {args.sample_rate} frames")
-    logger.info(f"Minimum box area: {args.min_box_area} pixels")
+    logger.info(f"User input minimum box area: {args.min_box_area} pixels")
     logger.info(f"Minimum images per train identity: {args.min_images_per_train_id}")
     logger.info(f"Minimum images per test identity: {args.min_images_per_test_id}")
     logger.info(f"Train sequences: {len(TRAIN_SEQS)}, "
@@ -515,7 +522,7 @@ def main():
 
     # Train sequences → ReID train
     logger.info("\n[1/4] Processing training sequences...")
-    train_stats_1 = process_split(
+    train_stats_1, actual_box_min_area_1 = process_split(
         split_name="train",
         sequences_dir=os.path.join(train_root, "sequences"),
         annotations_dir=os.path.join(train_root, "annotations"),
@@ -530,7 +537,7 @@ def main():
 
     # Val sequences → ReID train
     logger.info("\n[2/4] Processing validation sequences...")
-    train_stats_2 = process_split(
+    train_stats_2, actual_box_min_area_2 = process_split(
         split_name="train",
         sequences_dir=os.path.join(val_root, "sequences"),
         annotations_dir=os.path.join(val_root, "annotations"),
@@ -559,10 +566,11 @@ def main():
         train_stats.category_identity_counts[cat] += count
     for cat, count in train_stats_2.category_identity_counts.items():
         train_stats.category_identity_counts[cat] += count
+    actual_box_min_area_train = min(actual_box_min_area_1, actual_box_min_area_2)
 
     # Test sequences → ReID test
     logger.info("\n[3/4] Processing test sequences...")
-    test_stats = process_split(
+    test_stats, actual_box_min_area_test = process_split(
         split_name="test",
         sequences_dir=os.path.join(test_root, "sequences"),
         annotations_dir=os.path.join(test_root, "annotations"),
@@ -577,7 +585,7 @@ def main():
 
     # Generate README
     logger.info("\n[4/4] Generating README...")
-    generate_readme(args.output_dir, train_stats, test_stats, args)
+    generate_readme(args.output_dir, train_stats, test_stats, args, actual_box_min_area_train, actual_box_min_area_test)
 
     # Final summary
     logger.success("\n" + "=" * 60)
