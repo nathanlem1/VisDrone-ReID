@@ -480,7 +480,7 @@ def main():
                         type=str,
                         help="Root directory containing VisDrone2019-MOT-* folders")
     parser.add_argument("--output_dir",
-                        default="./VisDroneReID_data3",
+                        default="./VisDroneReID_data",
                         type=str,
                         help="Output ReID dataset directory")
     parser.add_argument("--sample_rate", type=int, default=10,
