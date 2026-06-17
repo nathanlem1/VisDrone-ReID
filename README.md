@@ -8,6 +8,11 @@ Every Nth frame of each sequence (N = 5, 10, etc.) is used to crop the object's 
 performance, each image crop of the test set is taken as query image once and is compared against all other test images
 that serve as gallery. Look at the `prepare_visdrone_reid_dataset.py` for more details.
 
+The figure below shows sample crops from the VisDrone-ReID training partition across all **ten** object categories. Each 
+row shows three crops of different instances from the same category.
+
+![](./assets/visdrone_reid_figure_5rows18.png)
+
 
 ## VisDrone-MOT Dataset
 
@@ -32,8 +37,8 @@ If you find this work useful in your research, please consider citing it using:
 
 ```
 @misc{VisDroneReID2026,
-    title={{VisDrone-ReID}: Multi-class ReID dataset prepared from VisDrone-MOT dataset.},
-    author={Nathanael L. Baisa},
+    title={{VisDrone-ReID}: A Unified Multi-Category Object Re-Identification Benchmark},
+    author={Asmau Lawal, Nathanael L. Baisa, Amudhavel Jayavel},
     howpublished = {\url{https://github.com/nathanlem1/VisDrone-ReID}},
     year={2026}
 }
