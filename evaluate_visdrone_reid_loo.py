@@ -17,8 +17,8 @@ contributes N queries. mAP and CMC are averaged across all queries.
 Metrics reported
 ----------------
   Accuracy  : Rank-1, Rank-5, Rank-10, mAP (both overall and per category)
-  Efficiency: feature extraction time, per-image latency,
-              query time, gallery memory, model params, FLOPs
+  Efficiency: feature extraction time, per-image latency, query time,
+              model params, FLOPs, feature memory footprint
 
 Usage
 -----
@@ -338,10 +338,16 @@ def evaluate_loo(features, pids, categories, max_rank=10):
 # =============================================================================
 
 def compute_efficiency_metrics(model, device, features):
-    metrics = {}
-    metrics["params_M"] = round(
-        sum(p.numel() for p in model.parameters()) / 1e6, 3
-    )
+    """
+    Returns dict with params_M, flops_G, feature_mem_MB.
+    """
+    metrics = dict()
+
+    # Parameter count
+    total_params = sum(p.numel() for p in model.parameters())
+    metrics["params_M"] = round(total_params / 1e6, 3)
+
+    # FLOPs (input: 1 × 3 × 256 × 128 — OSNet default size)
     if THOP_AVAILABLE:
         try:
             dummy = torch.zeros(1, 3, 256, 128).to(device)
@@ -351,6 +357,8 @@ def compute_efficiency_metrics(model, device, features):
             metrics["flops_G"] = f"error: {e}"
     else:
         metrics["flops_G"] = "thop not installed"
+
+    # Feature memory footprint
     metrics["feature_mem_MB"] = round(features.nbytes / (1024 ** 2), 3)
     return metrics
 
