@@ -476,7 +476,7 @@ def main():
         description="Prepare VisDrone ReID dataset with unified global ID space"
     )
     parser.add_argument("--input_dir",
-                        default="../datasets/VisDrone2019",  # ./dataset # You need to set to Path-To-Your-Dataset
+                        default="./VisDrone2019-MOT",  # ../datasets/VisDrone2019-MOT You need to set to Path-To-Your-Dataset
                         type=str,
                         help="Root directory containing VisDrone2019-MOT-* folders")
     parser.add_argument("--output_dir",
