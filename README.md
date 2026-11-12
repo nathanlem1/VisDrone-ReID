@@ -1,12 +1,12 @@
 # VisDrone-ReID
 
 This code generates a VisDrone-ReID dataset, multi-class ReID dataset, from VisDrone2019 Multi-Object Tracking 
-([VisDrone-MOT](https://github.com/VisDrone/VisDrone-Dataset)) dataset.
+([VisDrone-MOT](https://github.com/VisDrone/VisDrone-Dataset)) dataset, as used in [VisDrone-ReID: A Unified Multi-Category Object Re-Identification Benchmark]() paper.
 
 Train and Val MOT sequences create the ReID train set, whereas test MOT sequences create the ReID test set.
-Every Nth frame of each sequence (N = 5, 10, etc.) is used to crop the object's image patches. When evaluating the ReID
+Every $N^{th}$ frame of each sequence (N = 5, 10, etc.) is used to crop the object's image patches. When evaluating the ReID
 performance, each image crop of the test set is taken as query image once and is compared against all other test images
-that serve as gallery. Look at the `prepare_visdrone_reid_dataset.py` for more details.
+that serve as gallery. Look at the `prepare_visdrone_reid_dataset.py` and read [VisDrone-ReID]() paper for more details.
 
 The figure below shows sample crops from the VisDrone-ReID training partition across all **ten** object categories. Each 
 row shows three crops of different instances from the same category.
@@ -28,7 +28,36 @@ include:
 
 
 You need to set to the correct `Path-To-Your-Dataset` in the `prepare_visdrone_reid_dataset.py` code to properly generate 
-the required `VisDrone-ReID` dataset from this `VisDrone-MOT` Dataset.
+the required `VisDrone-ReID` dataset from this [VisDrone-MOT](https://github.com/VisDrone/VisDrone-Dataset) Dataset.
+
+
+## Installation
+Git clone this repo and install dependencies to have the same environment configuration as the one we used.
+
+```shell
+git clone https://github.com/nathanlem1/VisDrone-ReID.git
+cd VisDrone-ReID/
+pip install -r requirements.txt
+```
+
+
+## Dataset Preparation
+To prepare the VisDrone-ReID dataset, run the following code on terminal. Please look into code for more information.
+
+```shell
+python prepare_visdrone_reid_dataset.py
+```
+
+
+## Evaluation
+To evaluate a given model on the prepared dataset, run the following code on terminal. However, you first need to download 
+[osnet_ibn_x1_0_imagenet.pth](https://drive.google.com/file/d/1sr90V6irlYYDd4_4ISU2iruoRG8J__6l/view?usp=sharing) and 
+put in a `pretrained` folder. Please look into code for more information. This gives a good example of evaluating 
+pretrained models on this dataset; only OSNet model is used in this code as an example.
+
+```shell
+python evaluate_visdrone_reid_loo.py
+```
 
 
 ## Citation
