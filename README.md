@@ -17,8 +17,8 @@ row shows three crops of different instances from the same category.
 ## VisDrone-MOT Dataset
 
 You need to download the VisDrone2019 Multi-Object Tracking ([VisDrone-MOT](https://github.com/VisDrone/VisDrone-Dataset)) 
-dataset and put them in `VisDrone2019` folder. The particular `VisDrone-MOT` dataset sequences that need to be downloaded 
-include:
+dataset and put them in `VisDrone2019-MOT` folder. The particular [VisDrone-MOT](https://github.com/VisDrone/VisDrone-Dataset) 
+dataset sequences that need to be downloaded include:
 
 1) trainset (7.53 GB):  [BaiduYun](https://pan.baidu.com/s/16BtpKNWi0cEk8WUtfzpEHQ) | [GoogleDrive](https://drive.google.com/file/d/1-qX2d-P1Xr64ke6nTdlm33om1VxCUTSh/view?usp=sharing)
     
