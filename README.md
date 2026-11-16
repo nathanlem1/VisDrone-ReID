@@ -51,9 +51,10 @@ python prepare_visdrone_reid_dataset.py
 
 ## Evaluation
 To evaluate a given model on the prepared dataset, run the following code on terminal. However, you first need to download 
-[osnet_ibn_x1_0_imagenet.pth](https://drive.google.com/file/d/1sr90V6irlYYDd4_4ISU2iruoRG8J__6l/view?usp=sharing) and 
-put in a `pretrained` folder. Please look into code for more information. This gives a good example of evaluating 
-pretrained models on this dataset; only OSNet model is used in this code as an example.
+[osnet_ibn_x1_0_imagenet.pth](https://drive.google.com/file/d/1sr90V6irlYYDd4_4ISU2iruoRG8J__6l/view?usp=sharing) 
+(OSNet trained on ImageNet) or [osnet_ibn_visdrone_256x128-150.pth](https://drive.google.com/file/d/1b1PvnUAQIzycDvFn2NWYnJPjngWHqfgh/view?usp=drive_link) 
+(fine-tuned on [VisDrone-ReID]()), and put in a `pretrained` folder. Please look into code for more information. This 
+gives a good example of evaluating pretrained models on this dataset; only OSNet model is used in this code as an example.
 
 ```shell
 python evaluate_visdrone_reid_loo.py
