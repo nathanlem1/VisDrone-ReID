@@ -411,7 +411,7 @@ def main():
     )
     parser.add_argument("--dataset_root", type=str, default='./VisDroneReID_data',
                         help="Root of VisDroneReID (contains test/ folder)")
-    parser.add_argument("--weights", type=str, default='./pretrained/osnet_ibn_x1_0_imagenet.pth',
+    parser.add_argument("--weights", type=str, default='./pretrained/osnet_ibn_x1_0_imagenet.pth', # osnet_ibn_visdrone_256x128-150.pth
                         help="Path to model checkpoint or pretrained weights")
     parser.add_argument("--output_dir",   type=str, default="./eval_results_loo_category_osnet",
                         help="Directory to save JSON results")
